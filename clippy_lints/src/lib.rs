@@ -213,6 +213,7 @@ pub mod infallible_destructuring_match;
 pub mod infinite_iter;
 pub mod inherent_impl;
 pub mod inherent_to_string;
+pub mod init_before_foo;
 pub mod inline_fn_without_body;
 pub mod int_plus_one;
 pub mod integer_division;
@@ -907,6 +908,7 @@ pub fn register_plugins(store: &mut lint::LintStore, sess: &Session, conf: &Conf
     store.register_late_pass(|| box infinite_iter::InfiniteIter);
     store.register_late_pass(|| box inline_fn_without_body::InlineFnWithoutBody);
     store.register_late_pass(|| box identity_conversion::IdentityConversion::default());
+    store.register_late_pass(|| box init_before_foo::Pass);
     store.register_late_pass(|| box types::ImplicitHasher);
     store.register_late_pass(|| box fallible_impl_from::FallibleImplFrom);
     store.register_late_pass(|| box replace_consts::ReplaceConsts);

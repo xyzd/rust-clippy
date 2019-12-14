@@ -1,0 +1,10 @@
+error: call to `foo` not preceded by call to `init`
+  --> $DIR/init_before_foo2.rs:5:5
+   |
+LL |     foo();
+   |     ^^^^^
+   |
+   = note: `#[deny(clippy::init_before_foo)]` on by default
+
+error: aborting due to previous error
+
