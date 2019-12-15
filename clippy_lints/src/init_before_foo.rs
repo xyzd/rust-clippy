@@ -59,6 +59,7 @@ fn check_init(tcx: TyCtxt<'_>, def_id: DefId, call_stack: &mut FxHashSet<DefId>)
 }
 
 fn check_init_inner(tcx: TyCtxt<'_>, def_id: DefId, call_stack: &mut FxHashSet<DefId>) -> InitState {
+    // FIXME: functions calling `init` on all code paths should be treated just like `init`.
     if tcx.is_diagnostic_item(Symbol::intern("init"), def_id) {
         return InitState::Init;
     }
@@ -89,16 +90,6 @@ fn check_init_inner(tcx: TyCtxt<'_>, def_id: DefId, call_stack: &mut FxHashSet<D
 
     for (block, bbdata) in mir.basic_blocks().iter_enumerated() {
         let terminator = bbdata.terminator();
-        let callee_id = match &terminator.kind {
-            mir::TerminatorKind::Call { func, .. } => match func.ty(&**mir, tcx).kind {
-                ty::FnDef(def_id, _) => def_id,
-                // Function pointer calls aren't implemented in this simple analyses, so we assume
-                // any dynamic call to require init to have been called.
-                _ => return InitState::NeedsInit(vec![terminator.source_info.span]),
-            },
-            // We only care about function calls
-            _ => continue,
-        };
 
         let loc = mir::Location {
             block,
@@ -107,6 +98,17 @@ fn check_init_inner(tcx: TyCtxt<'_>, def_id: DefId, call_stack: &mut FxHashSet<D
         // If init has not been called before reaching this source location,
         // then we must report an error on all `foo` calls encountered
         cursor.seek(loc);
+
+        let callee_id = match &terminator.kind {
+            mir::TerminatorKind::Call { func, .. } => match func.ty(&**mir, tcx).kind {
+                ty::FnDef(def_id, _) => def_id,
+                // Function pointer calls aren't implemented in this simple analysis, so we assume
+                // any dynamic call to require init to have been called.
+                _ => return InitState::NeedsInit(vec![terminator.source_info.span]),
+            },
+            // We only care about function calls
+            _ => continue,
+        };
         if !cursor.contains(NoIdx) && tcx.is_diagnostic_item(Symbol::intern("foo"), callee_id) {
             return InitState::NeedsInit(vec![terminator.source_info.span]);
         } else if let InitState::NeedsInit(mut span) = check_init(tcx, callee_id, call_stack) {
@@ -131,8 +133,9 @@ impl Idx for NoIdx {
     fn index(self) -> usize {
         0
     }
-    fn new(_: usize) -> Self {
-        unimplemented!();
+    fn new(i: usize) -> Self {
+        assert_eq!(i, 0);
+        NoIdx
     }
 }
 
@@ -146,7 +149,9 @@ impl<'a, 'tcx> BitDenotation<'tcx> for SeenInit<'a, 'tcx> {
         1
     }
 
-    fn start_block_effect(&self, _on_entry: &mut BitSet<NoIdx>) {}
+    fn start_block_effect(&self, on_entry: &mut BitSet<NoIdx>) {
+        on_entry.clear();
+    }
 
     fn statement_effect(&self, _trans: &mut GenKillSet<NoIdx>, _loc: mir::Location) {}
 
@@ -180,5 +185,13 @@ impl<'a, 'tcx> BitDenotation<'tcx> for SeenInit<'a, 'tcx> {
 
 impl<'a, 'tcx> BottomValue for SeenInit<'a, 'tcx> {
     /// bottom = not seen
-    const BOTTOM_VALUE: bool = false;
+    const BOTTOM_VALUE: bool = true;
+
+    // Return true if `inout_set` changed
+    fn join<T: Idx>(&self, inout_set: &mut BitSet<T>, in_set: &BitSet<T>) -> bool {
+        // This is the opposite of what normal dataflow does. Normal dataflow is `true` if *any*
+        // predecessor block is `true`.
+        // We want to be `true` only if *all* predecessor blocks are `true`
+        inout_set.intersect(in_set)
+    }
 }
