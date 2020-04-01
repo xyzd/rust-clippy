@@ -8,6 +8,9 @@ fn main() {
         "cargo:rustc-env=GIT_HASH={}",
         rustc_tools_util::get_commit_hash().unwrap_or_default()
     );
+
+    GOODNIGHT ~~SWEET~~ SUBMODULE
+
     println!(
         "cargo:rustc-env=COMMIT_DATE={}",
         rustc_tools_util::get_commit_date().unwrap_or_default()
